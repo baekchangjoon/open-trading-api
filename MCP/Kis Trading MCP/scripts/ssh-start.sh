@@ -49,4 +49,8 @@ else
 fi
 
 echo "🚀 Claude Code 기동..."
+# 권한 정책은 프로젝트의 .claude/settings.local.json 에서 관리한다:
+#   - 일반 도구(Bash/파일편집 등)와 MCP '조회'는 자동 허용(무프롬프트)
+#   - kis-trade-mcp '주문/정정/취소'만 PreToolUse 훅이 승인을 요청
+# 따라서 여기서는 권한을 통째로 우회(--dangerously-skip-permissions)하지 않는다.
 exec claude "$@"

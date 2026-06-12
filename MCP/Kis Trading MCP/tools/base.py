@@ -550,6 +550,11 @@ class BaseTool(ABC):
             if api_type not in self.config['apis']:
                 return {"ok": False, "error": f"지원하지 않는 API 타입: {api_type}"}
 
+            # TODO(order-guard): 서버 측 주문 가드 삽입 지점.
+            #   env 플래그(REQUIRE_ORDER_CONFIRMATION)로 주문 api_type 실행 전 확인을 강제한다.
+            #   배포본/모든 MCP 클라이언트에 적용되는 최종 안전장치이며,
+            #   현재는 클라이언트 측 PreToolUse 훅(.claude/hooks/kis-order-guard.py)으로만 가드된다.
+            #   설계·구현 방법: docs/order-permission-guard.md (3장) 참고.
 
             # 4. 종목명 자동 처리 (stock_name이 있으면 자동으로 pdno 변환)
             params = await self._process_stock_name(ctx, params)

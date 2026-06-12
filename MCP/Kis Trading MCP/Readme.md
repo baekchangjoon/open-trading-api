@@ -31,6 +31,10 @@
 - 🔐 **자동 설정**: 서버 시작 시 KIS 인증 설정 자동 생성
 - 🖥️ **크로스 플랫폼**: Windows, macOS, Linux 모두 지원
 
+> ⚠️ **주문 안전장치**: 조회는 자동 허용하되 주문(매수/매도/정정/취소)만 사용자 승인을
+> 받도록 하는 가드의 설계·구현과, 향후 서버 측 강제 가드(예정) 방법은
+> [docs/order-permission-guard.md](docs/order-permission-guard.md) 를 참고하세요.
+
 ## 📦 Docker 설치 및 설정
 
 ### 📋 Docker 설치

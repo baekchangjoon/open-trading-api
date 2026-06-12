@@ -133,6 +133,8 @@ graph LR
 | `backtester/` | 과거 검증 + 파라미터 최적화 | Docker 기반 QuantConnect Lean, HTML 리포트 ([README](backtester/README.md)) |
 | `MCP/` | AI 도구 연결 | KIS Code Assistant + Trading MCP ([README](MCP/README.MD)) |
 
+> ⚠️ Trading MCP의 **주문 안전장치**(조회는 자동 허용 / 주문만 사용자 승인)와 향후 서버 측 강제 가드(예정)의 설계·구현은 [order-permission-guard.md](MCP/Kis%20Trading%20MCP/docs/order-permission-guard.md)를 참고하세요.
+
 #### 10개 프리셋 전략
 
 `strategy_builder`와 `backtester` 양쪽에서 동일하게 지원합니다.

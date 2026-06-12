@@ -51,7 +51,44 @@ class ApiExecutor:
         """kis_auth.py 다운로드"""
         kis_auth_url = "https://raw.githubusercontent.com/koreainvestment/open-trading-api/main/examples_llm/kis_auth.py"
         kis_auth_path = os.path.join(temp_dir, "kis_auth.py")
-        return self._download_file(kis_auth_url, kis_auth_path)
+        if not self._download_file(kis_auth_url, kis_auth_path):
+            return False
+        return self._patch_kis_auth_token_cache(kis_auth_path)
+
+    @classmethod
+    def _patch_kis_auth_token_cache(cls, kis_auth_path: str) -> bool:
+        """토큰 캐시 파일명을 서버(prod/vps)별로 분리하도록 패치.
+
+        업스트림 kis_auth.py는 토큰 캐시를 KIS{날짜} 한 파일로 prod/vps가 공유한다.
+        read_token()이 서버 종류를 검사하지 않아 모의(vps) 토큰을 실전(prod)이
+        재사용하면 KIS가 'EGW00123 기간이 만료된 token'으로 거부한다.
+        파일명에 KIS_TOKEN_ENV(런타임에 subprocess로 주입) 접미사를 붙여 분리한다.
+        """
+        try:
+            import re
+
+            with open(kis_auth_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            patched, n = re.subn(
+                r"f\"KIS\{datetime\.today\(\)\.strftime\('%Y%m%d'\)\}\"",
+                "f\"KIS{datetime.today().strftime('%Y%m%d')}_{os.getenv('KIS_TOKEN_ENV', 'prod')}\"",
+                content,
+            )
+
+            if n == 0:
+                # 업스트림 구조가 바뀐 경우: 다운로드 자체는 유효하므로 실패시키지 않되 경고
+                print("[경고] kis_auth.py 토큰 캐시 패치 미적용 (업스트림 패턴 불일치). "
+                      "prod/vps 토큰 캐시 충돌이 재발할 수 있습니다.")
+                return True
+
+            with open(kis_auth_path, 'w', encoding='utf-8') as f:
+                f.write(patched)
+            return True
+        except Exception as e:
+            print(f"[경고] kis_auth.py 토큰 캐시 패치 실패: {str(e)}")
+            # 패치 실패가 기능 자체를 막지 않도록 다운로드는 성공으로 처리
+            return True
 
     def _download_api_code(self, github_url: str, temp_dir: str, api_type: str) -> str:
         """API 코드 다운로드"""
@@ -171,7 +208,7 @@ class ApiExecutor:
 
             # 5. 함수 호출 코드 생성 (ka.auth() - env_dv에 따라 분기)
             # env_dv 값에 따른 인증 방식 결정
-            env_dv = params.get('env_dv', 'real')
+            env_dv = params.get('env_dv', 'demo')
             if env_dv == 'demo':
                 auth_code = 'ka.auth("vps")'
                 print(f"[모의투자] {function_name} 함수에 ka.auth(\"vps\") 적용")
@@ -241,11 +278,16 @@ if __name__ == "__main__":
         except Exception as e:
             raise Exception(f"코드 수정 실패: {str(e)}")
 
-    def _execute_code(self, temp_dir: str, timeout: int = 15) -> Dict[str, Any]:
+    def _execute_code(self, temp_dir: str, timeout: int = 15, env_dv: str = 'demo') -> Dict[str, Any]:
         """코드 실행"""
         try:
             # 실행할 파일 경로 (상대 경로로 변경)
             api_code_path = "api_code.py"
+
+            # 토큰 캐시 파일 분리용 환경변수 (kis_auth.py 패치와 연동)
+            # env_dv='demo' -> 모의(vps), 그 외 -> 실전(prod)
+            run_env = os.environ.copy()
+            run_env['KIS_TOKEN_ENV'] = 'vps' if env_dv == 'demo' else 'prod'
 
             # subprocess로 코드 실행
             result = subprocess.run(
@@ -253,7 +295,8 @@ if __name__ == "__main__":
                 cwd=temp_dir,
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
+                env=run_env
             )
 
             if result.returncode == 0:
@@ -317,8 +360,8 @@ if __name__ == "__main__":
             # 4. 코드 수정
             self._modify_api_code(api_code_path, params, api_type)
 
-            # 5. 코드 실행
-            execution_result = self._execute_code(temp_dir)
+            # 5. 코드 실행 (env_dv에 따라 토큰 캐시 분리)
+            execution_result = self._execute_code(temp_dir, env_dv=params.get('env_dv', 'demo'))
 
             # 6. 실행 시간 계산
             execution_time = time.time() - start_time
@@ -442,7 +485,7 @@ class BaseTool(ABC):
             lines.append("1. find_api_detail로 API 상세 정보를 확인하세요")
             lines.append("2. api_type을 선택하고 params에 필요한 파라미터를 입력하세요")
             lines.append("3. 종목명으로 검색할 경우: stock_name='종목명' 파라미터를 사용하세요")
-            lines.append("4. 모의투자 시에는 env_dv='demo'를 추가하세요")
+            lines.append("4. 실전투자 시에는 env_dv='real'을 추가하세요 (기본값은 'demo' 모의투자)")
             lines.append("")
             lines.append("🔧 특별한 api_type 및 예시:")
             lines.append(f"- find_stock_code (종목번호 검색) : {self.tool_name}({{ \"api_type\": \"find_stock_code\", \"params\": {{ \"stock_name\": \"삼성전자\" }} }})")
@@ -455,12 +498,12 @@ class BaseTool(ABC):
             if self.tool_name.startswith('domestic'):
                 lines.append("- 시장코드(fid_cond_mrkt_div_code)='J'(KRX)/'NX'(넥스트레이드)/'UN'(통합)")
             lines.append("- 매매구분(ord_dv)='buy'(매수)/'sell'(매도)")
-            lines.append("- 실전모의구분(env_dv)='real'(실전)/'demo'(모의)")
+            lines.append("- 실전모의구분(env_dv)='real'(실전)/'demo'(모의), 기본값='demo'(모의)")
             lines.append("")
             lines.append("⚠️ 중요: API 호출 시 필수 주의사항")
             lines.append("**API 실행 전 반드시 API 상세 문서의 파라미터를 확인하세요. Request Query Params와 Request Body 입력 시 추측이나 과거 실행 값 사용 금지, 확인된 API 상세 문서의 값을 사용하세요.**")
             lines.append("**파라미터 description에 '공란'이 있는 경우 기본적으로 빈값으로 처리하되, 아닌 경우에는 값을 넣어도 됩니다.**")
-            lines.append("**🎯 모의투자 관련: 사용자가 '모의', '모의투자', '데모', '테스트' 등의 용어를 언급하거나 모의투자 관련 요청을 할 경우, 반드시 env_dv 파라미터를 'demo'로 설정하여 API를 호출해야 합니다. env_dv 파라미터가 있는 모든 API에서 모의투자 시에는 env_dv='demo', 실전투자 시에는 env_dv='real'을 사용합니다. 기본값은 'real'이므로 모의투자 요청 시 반드시 env_dv='demo'를 명시적으로 설정해주세요.**")
+            lines.append("**🎯 실전/모의 구분: env_dv 파라미터가 있는 모든 API에서 모의투자 시에는 env_dv='demo', 실전투자 시에는 env_dv='real'을 사용합니다. 기본값은 'demo'(모의투자)이므로, 사용자가 '실전', '실전투자', '실계좌' 등 실거래를 명시적으로 요청한 경우에만 반드시 env_dv='real'을 명시적으로 설정해주세요. 그 외에는 기본값(모의투자)으로 안전하게 동작합니다.**")
             lines.append("")
             lines.append("🔒 자동 처리되는 파라미터 (제공하지 마세요):")
             lines.append("• cano (계좌번호), acnt_prdt_cd (계좌상품코드), my_htsid (HTS ID) - 시스템 자동 설정")

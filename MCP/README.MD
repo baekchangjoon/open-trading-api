@@ -67,6 +67,21 @@ def get_stock_info(code):
 - "고객별 맞춤 포트폴리오 추천 시스템 개발"
 - "실시간 리스크 모니터링 대시보드 구축"
 
+## 🛠️ 시작하기 (설치 & 연결)
+
+AI 도구(Claude Code / Claude Desktop / Cursor)에 연결하는 단계별 가이드는
+**[MCP AI 도구 연결 방법.md](MCP%20AI%20도구%20연결%20방법.md)** 를 참고하세요.
+
+**KIS Trading MCP** 는 두 가지 방식으로 실행할 수 있습니다.
+
+| 방법 | 추천 대상 | 문서 |
+|------|----------|------|
+| **로컬 서버 직접 실행(권장)** | Claude Code / Desktop / Cursor | `uv` 로 stdio 실행, Docker 불필요 → [Kis Trading MCP/Readme.md](Kis%20Trading%20MCP/Readme.md) "방법 A" |
+| **Docker 컨테이너** | 격리 환경 / HTTP(SSE) 배포 | → [Kis Trading MCP/Readme.md](Kis%20Trading%20MCP/Readme.md) "방법 B" |
+
+> 처음이라면 **로컬 서버 직접 실행(방법 A)** 이 가장 간단합니다. 클론 → `uv sync` →
+> `.env.paper` 작성 → MCP 클라이언트에 등록(stdio) 순서면 됩니다.
+
 ## 📈 왜 MCP인가?
 
 기존 REST API의 한계를 뛰어넘어, AI가 상황에 맞는 최적의 API를 선택하고 호출합니다. 개발자는 복잡한 API 문서를 읽을 필요 없이 자연어로 원하는 기능을 요청하면 됩니다.

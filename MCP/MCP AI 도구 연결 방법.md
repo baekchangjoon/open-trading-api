@@ -36,7 +36,81 @@ MCP는 Claude를 개발한 Anthropic에서 만든 프로토콜로, AI 모델이 
 
 ### 설정 방법
 
-(9월 중 공개 예정)
+GitHub 저장소: [open-trading-api/MCP/Kis Trading MCP](https://github.com/koreainvestment/open-trading-api/tree/main/MCP/Kis%20Trading%20MCP)
+
+실행 방법은 두 가지입니다.
+
+- **로컬 서버 직접 실행(권장)**: `uv` 로 `server.py` 를 stdio 모드로 띄워 Claude Code / Claude Desktop / Cursor 에 연결. Docker 불필요. *(아래 설명)*
+- **Docker 컨테이너**: 격리 환경 / HTTP(SSE) 배포가 필요할 때. 자세한 건 [Kis Trading MCP/Readme.md](https://github.com/koreainvestment/open-trading-api/blob/main/MCP/Kis%20Trading%20MCP/Readme.md) 의 "방법 B: Docker" 참고.
+
+#### 사전 준비: 저장소 클론, 패키지 설치, 환경설정
+
+```bash
+# 1. 저장소 클론
+git clone https://github.com/koreainvestment/open-trading-api.git
+cd open-trading-api/MCP/Kis\ Trading\ MCP
+
+# 2. 패키지 설치
+uv sync
+
+# 3. 환경설정 파일 만들기 (모의투자 = paper)
+cp .env.example .env.paper
+#   → .env.paper 를 열어 발급받은 App Key/Secret, 계좌번호를 채웁니다.
+#     (server.py 는 ENV 값에 따라 같은 폴더의 .env.{paper|live} 를 읽습니다.)
+```
+
+> `.env.paper` 채우는 자세한 항목과 1Password(op://) 보안 옵션은
+> [Kis Trading MCP/Readme.md](https://github.com/koreainvestment/open-trading-api/blob/main/MCP/Kis%20Trading%20MCP/Readme.md) 의 "방법 A: 로컬 서버 직접 실행" 참고.
+
+#### 1. Claude Desktop
+
+Claude Desktop 설정 파일(`claude_desktop_config.json`)에 아래 내용을 추가합니다.
+
+> 설정 파일 위치
+> - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+> - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "kis-trade-mcp": {
+      "command": "{uv 실행 경로}",
+      "args": [
+        "run", "--directory",
+        "{프로젝트 폴더 경로}/MCP/Kis Trading MCP",
+        "python", "server.py"
+      ],
+      "env": { "ENV": "paper" }
+    }
+  }
+}
+```
+
+- `{uv 실행 경로}`: `which uv`(macOS/Linux) 또는 `where uv`(Windows) 로 확인한 전체 경로 (예: `/Users/username/.local/bin/uv`)
+- `{프로젝트 폴더 경로}`: 저장소를 클론한 절대 경로 (예: `/Users/username/open-trading-api`)
+- `ENV`: `paper`(모의투자) 또는 `live`(실전투자). 처음엔 반드시 `paper` 권장.
+
+Claude Desktop을 재시작하면 대화창 하단 **검색 및 도구** 버튼, `설정 → 개발자`에서 연결을 확인할 수 있습니다.
+
+#### 2. Cursor
+
+`Settings > MCP Servers` 에서 위 Claude Desktop 과 **동일한 JSON**(stdio)을 사용합니다.
+
+#### 3. Claude Code (CLI)
+
+레포 루트(`open-trading-api/`)에서 등록합니다.
+
+```bash
+claude mcp add kis-trade-mcp --scope local --env ENV=paper \
+  -- uv run --directory "{프로젝트 폴더 경로}/MCP/Kis Trading MCP" python server.py
+```
+
+- 등록 후 **Claude Code 를 재시작**해야 서버가 로드됩니다(MCP 는 시작 시 1회 로드).
+- 확인: `claude mcp list` → `kis-trade-mcp ... ✔ Connected`
+
+> ⚠️ **주문 안전장치**: Claude Code 사용 시, 조회는 자동 허용하고 주문(매수/매도/정정/취소)만
+> 승인을 받도록 하는 `PreToolUse` 훅을 둘 수 있습니다. 설계·설정은
+> [Kis Trading MCP/docs/order-permission-guard.md](https://github.com/koreainvestment/open-trading-api/blob/main/MCP/Kis%20Trading%20MCP/docs/order-permission-guard.md) 참고.
 
 ## KIS Code Assistant MCP
 

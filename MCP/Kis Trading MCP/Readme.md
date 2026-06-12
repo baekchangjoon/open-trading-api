@@ -35,7 +35,159 @@
 > 받도록 하는 가드의 설계·구현과, 향후 서버 측 강제 가드(예정) 방법은
 > [docs/order-permission-guard.md](docs/order-permission-guard.md) 를 참고하세요.
 
-## 📦 Docker 설치 및 설정
+## 🚀 실행 방법은 두 가지입니다
+
+| 방법 | 추천 대상 | 특징 |
+|------|----------|------|
+| **A. 로컬 서버 직접 실행** | Claude Code / Claude Desktop / Cursor 사용자 | Docker 불필요. `uv` 로 바로 실행, stdio 연결. **가장 간단.** |
+| **B. Docker 컨테이너** | 격리 환경 / HTTP(SSE) 배포 | 컨테이너로 격리, HTTP 서버로 노출. |
+
+> 처음이라면 **방법 A(로컬 서버 직접 실행)** 를 권장합니다. Docker 가 필요 없습니다.
+
+---
+
+## ⚡ 방법 A: 로컬 서버 직접 실행 (Docker 없이)
+
+Claude Code·Claude Desktop·Cursor 같은 MCP 클라이언트가 `uv` 로 `server.py` 를
+**stdio 모드**로 직접 띄우는 방식입니다.
+
+### 0단계: 사전 준비
+- **Python 3.11 이상**
+- **`uv`** (Python 패키지/실행 관리자) — 없으면 설치:
+  ```bash
+  # macOS / Linux
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  # Windows PowerShell
+  powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+  ```
+- 한국투자증권 OPEN API **App Key / App Secret**(모의·실전)과 **계좌번호**
+
+### 1단계: 클론 & 의존성 설치
+```bash
+git clone https://github.com/koreainvestment/open-trading-api.git
+cd "open-trading-api/MCP/Kis Trading MCP"
+uv sync
+```
+
+### 2단계: 환경설정 파일 `.env.paper` 만들기  ⭐가장 중요
+서버는 `ENV` 값(**`paper`=모의투자 / `live`=실전투자**)에 따라 **같은 폴더의
+`.env.{ENV}`** 파일을 읽습니다. 이 파일이 없으면 서버는 기동 즉시 종료됩니다.
+
+모의투자부터 시작하므로 `.env.paper` 를 만듭니다:
+```bash
+cp .env.example .env.paper
+```
+그런 다음 `.env.paper` 를 열어 발급받은 값을 채웁니다(평문):
+```ini
+MCP_TYPE=stdio
+KIS_APP_KEY=발급받은_실전_APP_KEY
+KIS_APP_SECRET=발급받은_실전_APP_SECRET
+KIS_PAPER_APP_KEY=발급받은_모의_APP_KEY
+KIS_PAPER_APP_SECRET=발급받은_모의_APP_SECRET
+KIS_HTS_ID=내_HTS_ID
+KIS_ACCT_STOCK=12345678        # 실전 주식 계좌 앞 8자리
+KIS_ACCT_FUTURE=12345678       # 실전 선물옵션 계좌 앞 8자리 (주식과 같아도 됨)
+KIS_PAPER_STOCK=50123456       # 모의 주식 계좌
+KIS_PAPER_FUTURE=50123456      # 모의 선물옵션 계좌 (주식과 같아도 됨)
+KIS_PROD_TYPE=01               # 계좌 뒤 2자리: 01 종합 / 03 국내선옵 / 08 해외선옵 ...
+```
+> `.env.paper` / `.env.live` 는 `.gitignore` 에 있어 git 에 올라가지 않습니다(비밀 보호).
+> 더 안전하게 1Password 로 관리하려면 아래 **"🔐 방법 A-보안: 1Password(op://)로 비밀 관리"** 섹션 참고.
+
+### 3단계: 단독 실행으로 동작 확인 (선택이지만 권장)
+MCP 클라이언트에 붙이기 전에, 서버가 정상 기동하는지 확인합니다:
+```bash
+ENV=paper uv run python server.py
+```
+로그에 `🚀 MCP 서버를 stdio 모드로 시작합니다...` 가 보이면 정상입니다.
+stdio 모드라 그 뒤 **입력 대기 상태로 멈춰 있는 게 정상**입니다 — `Ctrl+C` 로 종료하세요.
+(오류로 바로 종료되면 대부분 `.env.paper` 누락/값 오류입니다.)
+
+### 4단계: MCP 클라이언트에 등록
+
+먼저 두 값을 확인해 두세요:
+```bash
+which uv   # uv 절대경로 (예: /Users/username/.local/bin/uv)  ※ Windows 는 where uv
+pwd        # "MCP/Kis Trading MCP" 폴더의 절대경로
+```
+
+#### ① Claude Code (CLI)
+레포 루트(`open-trading-api/`)에서 실행:
+```bash
+claude mcp add kis-trade-mcp --scope local --env ENV=paper \
+  -- uv run --directory "/절대경로/open-trading-api/MCP/Kis Trading MCP" python server.py
+```
+- `/절대경로/...` 는 위 `pwd` 로 확인한 실제 경로로 바꾸세요.
+- 등록 후 **Claude Code 를 재시작**해야 서버가 로드됩니다(MCP 는 시작 시 1회만 로드).
+- 확인: `claude mcp list` → `kis-trade-mcp ... ✔ Connected`
+
+#### ② Claude Desktop
+설정 파일에 아래를 추가하고 앱을 재시작합니다.
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+```json
+{
+  "mcpServers": {
+    "kis-trade-mcp": {
+      "command": "/Users/username/.local/bin/uv",
+      "args": [
+        "run", "--directory",
+        "/절대경로/open-trading-api/MCP/Kis Trading MCP",
+        "python", "server.py"
+      ],
+      "env": { "ENV": "paper" }
+    }
+  }
+}
+```
+- `command` 는 위 `which uv` 로 확인한 **uv 절대경로**.
+- `args` 의 `--directory` 는 **`MCP/Kis Trading MCP` 폴더의 절대경로**.
+
+#### ③ Cursor
+`Settings > MCP Servers` 에서 위 Claude Desktop 과 **동일한 JSON**(stdio)을 사용합니다.
+
+### 실전(live) 전환
+실전투자로 바꾸려면 `.env.live` 를 만들어 값을 채우고, 등록 시 `ENV` 를 `live` 로 바꿉니다
+(Claude Code 는 `--env ENV=live`, Desktop/Cursor 는 `"env": { "ENV": "live" }`).
+**반드시 모의(paper)로 충분히 검증한 뒤** 전환하세요.
+
+---
+
+## 🔐 방법 A-보안: 1Password(op://)로 비밀 관리 (선택)
+
+평문 키를 디스크에 두기 싫다면, `.env.{env}` 값에 **`op://` 참조**를 적을 수 있습니다.
+서버 기동 시 1Password 에서 실제 값을 읽어 메모리로만 주입합니다(평문 파일에 비밀이 남지 않음).
+
+```ini
+# .env.paper (op:// 방식)
+MCP_TYPE=stdio
+OP_ACCOUNT=my.1password.com
+KIS_APP_KEY=op://Private/kis-trading/KIS_APP_KEY
+KIS_APP_SECRET=op://Private/kis-trading/KIS_APP_SECRET
+# ... (나머지 키도 동일하게 op://vault/item/field 형식)
+KIS_PROD_TYPE=01
+```
+
+인증 수단은 다음 우선순위로 **자동 선택**됩니다(`module/plugin/onepassword.py`):
+
+| 우선순위 | 수단 | 사용 상황 |
+|---|---|---|
+| 1 | `op` CLI (`op read`) | 로컬 세션 / Service Account 토큰 / 앱 연동 모두 처리. SSH 친화. |
+| 2 | SDK + `OP_SERVICE_ACCOUNT_TOKEN` | 무인(헤드리스) 자동화. |
+| 3 | SDK + 데스크톱 앱(Touch ID) | 로컬 GUI 폴백. |
+
+- **로컬 GUI(맥)**: 1Password 데스크톱 앱이 켜져 있으면 기동 시 Touch ID 승인만 하면 됩니다.
+- **SSH/헤드리스**: GUI Touch ID 가 없으므로 `scripts/ssh-start.sh` 로 Claude Code 를 띄우세요.
+  이 런처가 `op signin` 으로 세션을 만든 뒤 그 세션을 물려받아 서버를 기동합니다.
+  ```bash
+  ./scripts/ssh-start.sh            # 1Password 로그인 후 claude 기동
+  OP_ACCOUNT=my ./scripts/ssh-start.sh
+  ```
+- 평문 값(op:// 아님)은 그대로 쓰이므로 1Password 미사용 환경과 완전히 하위호환됩니다.
+
+---
+
+## 📦 방법 B: Docker 설치 및 설정
 
 ### 📋 Docker 설치
 

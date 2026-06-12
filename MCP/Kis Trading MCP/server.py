@@ -7,6 +7,7 @@ from fastmcp import FastMCP
 
 from module import setup_environment, EnvironmentMiddleware, EnvironmentConfig, setup_kis_config
 from module.plugin import Database
+from module.plugin.onepassword import resolve_op_references
 from tools import *
 
 logging.basicConfig(
@@ -23,9 +24,13 @@ def main():
     logging.info("setup environment ...")
     env_config = setup_environment(env=env)
 
+    # 1Password 비밀 주입 (.env 의 op:// 참조를 실제 값으로 치환)
+    resolved = resolve_op_references()
+
     # KIS 설정 자동 생성 (템플릿 다운로드 + 값 덮어쓰기)
+    # op:// 참조를 주입했다면 1Password를 원본으로 yaml을 강제 재생성한다.
     logging.info("setup KIS configuration ...")
-    if not setup_kis_config(force_update=env == "live"):
+    if not setup_kis_config(force_update=env == "live" or resolved > 0):
         logging.warning("KIS 설정 파일 생성에 실패했습니다. 수동으로 설정해주세요.")
 
     # 데이터베이스 초기화
@@ -47,7 +52,6 @@ def main():
         name="My Awesome MCP Server",
         instructions="This is a server for a specific project.",
         version="1.0.0",
-        stateless_http=False,
     )
 
     # middleware

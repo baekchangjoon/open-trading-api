@@ -21,3 +21,6 @@ tmp/
 !standalone_util/*.csv
 *.tmp
 *.db
+# Local secrets
+.env.live
+.env.*

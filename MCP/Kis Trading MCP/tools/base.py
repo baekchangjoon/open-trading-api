@@ -206,6 +206,56 @@ class ApiExecutor:
                     print(f"[경고] {api_type} API에서 excg_id_dvsn_cd 파라미터가 필요합니다. (예: NASD, NYSE, KRX)")
                     # overseas_stock 등은 사용자가 명시적으로 제공해야 함
 
+            # 4-b. 종목명(stock_name) 해소 결과 정리
+            #   _process_stock_name 이 종목명을 해소하면서 pdno / _resolved_stock_code /
+            #   _original_search_value / 원본 stock_name 키를 params 에 남긴다. 이 키들은
+            #   대부분의 OPEN API 함수 시그니처에 없으므로 그대로 넘기면
+            #   `TypeError: ... unexpected keyword argument 'stock_name'` 이 발생한다.
+            #   → 해소된 종목코드를 함수가 실제로 받는 종목코드 파라미터에 매핑하고,
+            #     함수가 받지 않는 메타/헬퍼 키는 호출에서 제거한다.
+            resolved_stock_code = adjusted_params.get('_resolved_stock_code') or adjusted_params.get('pdno')
+
+            # 함수 시그니처에서 파라미터명을 단어 단위로 정확히 추출한다.
+            #   function_params 는 위 정규식 `\((.*?)\):` 로 잡혀 함수 본문 일부까지 포함될 수
+            #   있으므로(첫 `):` 까지), 진짜 시그니처만 떼어내 파싱한다.
+            #   substring 매칭(`'pdno' in function_params`)은 본문 토큰이나 prdt_pdno 같은
+            #   이름에 오탐해 잘못된 파라미터에 매핑/제거를 일으키므로 사용하지 않는다.
+            #   주석(`# ...`)에 괄호가 들어있을 수 있어(예: "(ex. real:실전, demo:모의)"),
+            #   먼저 줄 단위로 주석을 제거한 뒤 첫 ')'(시그니처 닫는 괄호) 이전까지만 취한다.
+            no_comment_params = "\n".join(
+                line.split('#', 1)[0] for line in function_params.split('\n')
+            )
+            signature_only = no_comment_params.split(')', 1)[0]
+            signature_param_names = set()
+            for part in signature_only.split(','):
+                name = part.split(':', 1)[0].split('=', 1)[0].strip().lstrip('*')
+                if name:
+                    signature_param_names.add(name)
+
+            # 함수가 받는 종목코드 파라미터를 우선순위 순으로 결정 (정확한 이름 매칭)
+            stock_code_param_priority = ('pdno', 'fid_input_iscd', 'srs_cd', 'shtn_iscd', 'input_iscd')
+            target_stock_code_param = next(
+                (p for p in stock_code_param_priority if p in signature_param_names), None
+            )
+
+            if resolved_stock_code and target_stock_code_param:
+                # 사용자가 해당 파라미터를 명시하지 않았을 때만 해소값으로 채운다 (명시값 우선)
+                if not adjusted_params.get(target_stock_code_param):
+                    adjusted_params[target_stock_code_param] = resolved_stock_code
+                    print(f"[종목매핑] {function_name} 함수에 {target_stock_code_param}={resolved_stock_code} 설정 (stock_name 해소)")
+
+            # 함수가 받지 않는 메타/헬퍼 키 제거
+            stock_name_helper_keys = (
+                'stock_name', 'stock_name_kr', 'korean_name', 'company_name',
+                '_original_search_value', '_resolved_stock_code',
+            )
+            for helper_key in stock_name_helper_keys:
+                adjusted_params.pop(helper_key, None)
+
+            # pdno 는 _process_stock_name 이 항상 추가하므로, 함수가 pdno 를 받지 않으면 제거
+            if 'pdno' not in signature_param_names:
+                adjusted_params.pop('pdno', None)
+
             # 5. 함수 호출 코드 생성 (ka.auth() - env_dv에 따라 분기)
             # env_dv 값에 따른 인증 방식 결정
             env_dv = params.get('env_dv', 'demo')
